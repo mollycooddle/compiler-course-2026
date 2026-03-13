@@ -9,24 +9,25 @@
 
 namespace {
 
-const clang::Expr* IgnoreWrappers(const clang::Expr* expr) {
+const clang::Expr *IgnoreWrappers(const clang::Expr *expr) {
   if (expr == nullptr) {
     return nullptr;
   }
   return expr->IgnoreParenImpCasts();
 }
 
-bool IsDeclRefToVar(const clang::Expr* expr, const clang::VarDecl* var_decl) {
+bool IsDeclRefToVar(const clang::Expr *expr, const clang::VarDecl *var_decl) {
   expr = IgnoreWrappers(expr);
   if (expr == nullptr) {
     return false;
   }
 
-  const auto* decl_ref = llvm::dyn_cast<clang::DeclRefExpr>(expr);
+  const auto *decl_ref = llvm::dyn_cast<clang::DeclRefExpr>(expr);
   return decl_ref != nullptr && decl_ref->getDecl() == var_decl;
 }
 
-bool IsTargetObjectExpr(const clang::Expr* expr, const clang::VarDecl* var_decl) {
+bool IsTargetObjectExpr(const clang::Expr *expr,
+                        const clang::VarDecl *var_decl) {
   expr = IgnoreWrappers(expr);
   if (expr == nullptr) {
     return false;
@@ -36,17 +37,18 @@ bool IsTargetObjectExpr(const clang::Expr* expr, const clang::VarDecl* var_decl)
     return true;
   }
 
-  if (const auto* unary_op = llvm::dyn_cast<clang::UnaryOperator>(expr)) {
+  if (const auto *unary_op = llvm::dyn_cast<clang::UnaryOperator>(expr)) {
     if (unary_op->getOpcode() == clang::UO_Deref) {
       return IsDeclRefToVar(unary_op->getSubExpr(), var_decl);
     }
   }
 
-  if (const auto* member_expr = llvm::dyn_cast<clang::MemberExpr>(expr)) {
+  if (const auto *member_expr = llvm::dyn_cast<clang::MemberExpr>(expr)) {
     return IsTargetObjectExpr(member_expr->getBase(), var_decl);
   }
 
-  if (const auto* array_expr = llvm::dyn_cast<clang::ArraySubscriptExpr>(expr)) {
+  if (const auto *array_expr =
+          llvm::dyn_cast<clang::ArraySubscriptExpr>(expr)) {
     return IsTargetObjectExpr(array_expr->getBase(), var_decl);
   }
 
@@ -54,7 +56,8 @@ bool IsTargetObjectExpr(const clang::Expr* expr, const clang::VarDecl* var_decl)
 }
 
 bool IsNonConstReference(clang::QualType type) {
-  return type->isReferenceType() && !type.getNonReferenceType().isConstQualified();
+  return type->isReferenceType() &&
+         !type.getNonReferenceType().isConstQualified();
 }
 
 bool IsPointerToNonConst(clang::QualType type) {
@@ -62,15 +65,15 @@ bool IsPointerToNonConst(clang::QualType type) {
 }
 
 class MutationAnalyzer : public clang::RecursiveASTVisitor<MutationAnalyzer> {
- public:
-  explicit MutationAnalyzer(const clang::VarDecl* target) : target_(target) {}
+public:
+  explicit MutationAnalyzer(const clang::VarDecl *target) : target_(target) {}
 
-  bool VisitBinaryOperator(clang::BinaryOperator* op) {
+  bool VisitBinaryOperator(clang::BinaryOperator *op) {
     if (!op->isAssignmentOp()) {
       return true;
     }
 
-    const clang::Expr* lhs = op->getLHS();
+    const clang::Expr *lhs = op->getLHS();
 
     if (IsDeclRefToVar(lhs, target_)) {
       variable_modified_ = true;
@@ -83,12 +86,12 @@ class MutationAnalyzer : public clang::RecursiveASTVisitor<MutationAnalyzer> {
     return true;
   }
 
-  bool VisitUnaryOperator(clang::UnaryOperator* op) {
+  bool VisitUnaryOperator(clang::UnaryOperator *op) {
     if (!op->isIncrementDecrementOp()) {
       return true;
     }
 
-    const clang::Expr* sub_expr = op->getSubExpr();
+    const clang::Expr *sub_expr = op->getSubExpr();
 
     if (IsDeclRefToVar(sub_expr, target_)) {
       variable_modified_ = true;
@@ -101,8 +104,8 @@ class MutationAnalyzer : public clang::RecursiveASTVisitor<MutationAnalyzer> {
     return true;
   }
 
-  bool VisitCallExpr(clang::CallExpr* call) {
-    const auto* callee = call->getDirectCallee();
+  bool VisitCallExpr(clang::CallExpr *call) {
+    const auto *callee = call->getDirectCallee();
     if (callee == nullptr) {
       return true;
     }
@@ -112,18 +115,20 @@ class MutationAnalyzer : public clang::RecursiveASTVisitor<MutationAnalyzer> {
     const unsigned count = arg_count < param_count ? arg_count : param_count;
 
     for (unsigned i = 0; i < count; ++i) {
-      const clang::Expr* arg = call->getArg(i);
-      const clang::ParmVarDecl* param = callee->getParamDecl(i);
+      const clang::Expr *arg = call->getArg(i);
+      const clang::ParmVarDecl *param = callee->getParamDecl(i);
       const clang::QualType param_type = param->getType();
 
       if (IsDeclRefToVar(arg, target_)) {
-        if (IsNonConstReference(param_type) || IsPointerToNonConst(param_type)) {
+        if (IsNonConstReference(param_type) ||
+            IsPointerToNonConst(param_type)) {
           variable_modified_ = true;
         }
       }
 
       if (IsTargetObjectExpr(arg, target_)) {
-        if (IsNonConstReference(param_type) || IsPointerToNonConst(param_type)) {
+        if (IsNonConstReference(param_type) ||
+            IsPointerToNonConst(param_type)) {
           object_modified_ = true;
         }
       }
@@ -132,45 +137,43 @@ class MutationAnalyzer : public clang::RecursiveASTVisitor<MutationAnalyzer> {
     return true;
   }
 
-  bool IsVariableModified() const {
-    return variable_modified_;
-  }
+  bool IsVariableModified() const { return variable_modified_; }
 
-  bool IsObjectModified() const {
-    return object_modified_;
-  }
+  bool IsObjectModified() const { return object_modified_; }
 
- private:
-  const clang::VarDecl* target_;
+private:
+  const clang::VarDecl *target_;
   bool variable_modified_ = false;
   bool object_modified_ = false;
 };
 
-class ConstQualifierVisitor : public clang::RecursiveASTVisitor<ConstQualifierVisitor> {
- public:
-  explicit ConstQualifierVisitor(clang::ASTContext* context, clang::Rewriter& rewriter)
+class ConstQualifierVisitor
+    : public clang::RecursiveASTVisitor<ConstQualifierVisitor> {
+public:
+  explicit ConstQualifierVisitor(clang::ASTContext *context,
+                                 clang::Rewriter &rewriter)
       : context_(context), rewriter_(rewriter) {}
 
-  bool VisitFunctionDecl(clang::FunctionDecl* func_decl) {
+  bool VisitFunctionDecl(clang::FunctionDecl *func_decl) {
     if (func_decl == nullptr || !func_decl->hasBody()) {
       return true;
     }
 
-    clang::Stmt* body = func_decl->getBody();
+    clang::Stmt *body = func_decl->getBody();
 
-    for (clang::ParmVarDecl* param : func_decl->parameters()) {
+    for (clang::ParmVarDecl *param : func_decl->parameters()) {
       AnalyzeVar(param, body);
     }
 
     return true;
   }
 
-  bool VisitVarDecl(clang::VarDecl* var_decl) {
+  bool VisitVarDecl(clang::VarDecl *var_decl) {
     if (var_decl == nullptr || !var_decl->isLocalVarDecl()) {
       return true;
     }
 
-    const auto* function_decl =
+    const auto *function_decl =
         llvm::dyn_cast_or_null<clang::FunctionDecl>(var_decl->getDeclContext());
     if (function_decl == nullptr || !function_decl->hasBody()) {
       return true;
@@ -180,8 +183,8 @@ class ConstQualifierVisitor : public clang::RecursiveASTVisitor<ConstQualifierVi
     return true;
   }
 
- private:
-  void AnalyzeVar(clang::VarDecl* var_decl, clang::Stmt* body) {
+private:
+  void AnalyzeVar(clang::VarDecl *var_decl, clang::Stmt *body) {
     const clang::QualType type = var_decl->getType();
 
     if (type->isReferenceType()) {
@@ -194,7 +197,8 @@ class ConstQualifierVisitor : public clang::RecursiveASTVisitor<ConstQualifierVi
     }
   }
 
-  void HandleReference(clang::VarDecl* var_decl, clang::Stmt* body, clang::QualType type) {
+  void HandleReference(clang::VarDecl *var_decl, clang::Stmt *body,
+                       clang::QualType type) {
     if (type.getNonReferenceType().isConstQualified()) {
       return;
     }
@@ -207,7 +211,8 @@ class ConstQualifierVisitor : public clang::RecursiveASTVisitor<ConstQualifierVi
     }
   }
 
-  void HandlePointer(clang::VarDecl* var_decl, clang::Stmt* body, clang::QualType type) {
+  void HandlePointer(clang::VarDecl *var_decl, clang::Stmt *body,
+                     clang::QualType type) {
     const bool pointee_const = type->getPointeeType().isConstQualified();
     const bool pointer_const = type.isConstQualified();
 
@@ -223,8 +228,8 @@ class ConstQualifierVisitor : public clang::RecursiveASTVisitor<ConstQualifierVi
     }
   }
 
-  void InsertConstBeforeType(const clang::VarDecl* var_decl) {
-    const clang::TypeSourceInfo* type_info = var_decl->getTypeSourceInfo();
+  void InsertConstBeforeType(const clang::VarDecl *var_decl) {
+    const clang::TypeSourceInfo *type_info = var_decl->getTypeSourceInfo();
     if (type_info == nullptr) {
       return;
     }
@@ -232,14 +237,15 @@ class ConstQualifierVisitor : public clang::RecursiveASTVisitor<ConstQualifierVi
     clang::TypeLoc type_loc = type_info->getTypeLoc();
     clang::SourceLocation begin = type_loc.getBeginLoc();
 
-    if (begin.isInvalid() || context_->getSourceManager().isInSystemHeader(begin)) {
+    if (begin.isInvalid() ||
+        context_->getSourceManager().isInSystemHeader(begin)) {
       return;
     }
 
     rewriter_.InsertText(begin, "const ", true, true);
   }
 
-  void InsertConstBeforeVariableName(const clang::VarDecl* var_decl) {
+  void InsertConstBeforeVariableName(const clang::VarDecl *var_decl) {
     clang::SourceLocation loc = var_decl->getLocation();
 
     if (loc.isInvalid() || context_->getSourceManager().isInSystemHeader(loc)) {
@@ -249,57 +255,59 @@ class ConstQualifierVisitor : public clang::RecursiveASTVisitor<ConstQualifierVi
     rewriter_.InsertText(loc, "const ", true, true);
   }
 
-  clang::ASTContext* context_;
-  clang::Rewriter& rewriter_;
+  clang::ASTContext *context_;
+  clang::Rewriter &rewriter_;
 };
 
 class ConstQualifierConsumer : public clang::ASTConsumer {
- public:
-  ConstQualifierConsumer(clang::ASTContext* context, clang::Rewriter& rewriter)
+public:
+  ConstQualifierConsumer(clang::ASTContext *context, clang::Rewriter &rewriter)
       : visitor_(context, rewriter) {}
 
-  void HandleTranslationUnit(clang::ASTContext& context) override {
+  void HandleTranslationUnit(clang::ASTContext &context) override {
     visitor_.TraverseDecl(context.getTranslationUnitDecl());
   }
 
- private:
+private:
   ConstQualifierVisitor visitor_;
 };
 
 class ConstQualifierAction : public clang::PluginASTAction {
- public:
-  std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
-      clang::CompilerInstance& compiler_instance, llvm::StringRef) override {
+public:
+  std::unique_ptr<clang::ASTConsumer>
+  CreateASTConsumer(clang::CompilerInstance &compiler_instance,
+                    llvm::StringRef) override {
     rewriter_.setSourceMgr(compiler_instance.getSourceManager(),
                            compiler_instance.getLangOpts());
     return std::make_unique<ConstQualifierConsumer>(
         &compiler_instance.getASTContext(), rewriter_);
   }
 
-  bool ParseArgs(const clang::CompilerInstance&,
-                 const std::vector<std::string>&) override {
+  bool ParseArgs(const clang::CompilerInstance &,
+                 const std::vector<std::string> &) override {
     return true;
   }
 
   void EndSourceFileAction() override {
-    const auto& source_manager = rewriter_.getSourceMgr();
+    const auto &source_manager = rewriter_.getSourceMgr();
     const clang::FileID main_file = source_manager.getMainFileID();
 
-    const clang::RewriteBuffer* rewrite_buffer =
+    const clang::RewriteBuffer *rewrite_buffer =
         rewriter_.getRewriteBufferFor(main_file);
 
     if (rewrite_buffer != nullptr) {
-      llvm::outs() << std::string(rewrite_buffer->begin(), rewrite_buffer->end());
+      llvm::outs() << std::string(rewrite_buffer->begin(),
+                                  rewrite_buffer->end());
     } else {
       llvm::outs() << source_manager.getBufferData(main_file);
     }
   }
 
- private:
+private:
   clang::Rewriter rewriter_;
 };
 
-}  // namespace
+} // namespace
 
 static clang::FrontendPluginRegistry::Add<ConstQualifierAction>
     X("example_plugin", "Add const to references and pointers when possible");
