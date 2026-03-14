@@ -139,7 +139,6 @@ public:
   }
 
   bool IsVariableModified() const { return variable_modified_; }
-
   bool IsObjectModified() const { return object_modified_; }
 
 private:
@@ -293,7 +292,7 @@ public:
     const auto &source_manager = rewriter_.getSourceMgr();
     const clang::FileID main_file = source_manager.getMainFileID();
 
-    const clang::RewriteBuffer *rewrite_buffer =
+    const llvm::RewriteBuffer *rewrite_buffer =
         rewriter_.getRewriteBufferFor(main_file);
 
     if (rewrite_buffer != nullptr) {
