@@ -23,10 +23,8 @@ struct InvertRelationalIcmpPass
         auto Pred = Cmp->getPredicate();
 
         // интересуют только gt / ge
-        if (Pred != ICmpInst::ICMP_SGT &&
-            Pred != ICmpInst::ICMP_UGT &&
-            Pred != ICmpInst::ICMP_SGE &&
-            Pred != ICmpInst::ICMP_UGE)
+        if (Pred != ICmpInst::ICMP_SGT && Pred != ICmpInst::ICMP_UGT &&
+            Pred != ICmpInst::ICMP_SGE && Pred != ICmpInst::ICMP_UGE)
           continue;
 
         IRBuilder<> Builder(Cmp);
@@ -34,11 +32,9 @@ struct InvertRelationalIcmpPass
         // берём противоположный предикат (le, lt и т.д.)
         auto InvPred = Cmp->getInversePredicate();
 
-        Value *NewCmp = Builder.CreateICmp(
-            InvPred,
-            Cmp->getOperand(0),
-            Cmp->getOperand(1),
-            Cmp->getName() + ".inv");
+        Value *NewCmp =
+            Builder.CreateICmp(InvPred, Cmp->getOperand(0), Cmp->getOperand(1),
+                               Cmp->getName() + ".inv");
 
         // делаем отрицание
         Value *Neg = Builder.CreateNot(NewCmp, Cmp->getName() + ".not");
@@ -50,8 +46,7 @@ struct InvertRelationalIcmpPass
       }
     }
 
-    return Changed ? PreservedAnalyses::none()
-                   : PreservedAnalyses::all();
+    return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
   }
 
   static bool isRequired() { return true; }
@@ -59,13 +54,11 @@ struct InvertRelationalIcmpPass
 
 } // namespace
 
-extern "C" LLVM_ATTRIBUTE_WEAK PassPluginLibraryInfo
-llvmGetPassPluginInfo() {
+extern "C" LLVM_ATTRIBUTE_WEAK PassPluginLibraryInfo llvmGetPassPluginInfo() {
   return {LLVM_PLUGIN_API_VERSION, "InvertRelationalIcmpPass", "1.0",
           [](PassBuilder &PB) {
             PB.registerPipelineParsingCallback(
-                [](StringRef Name,
-                   FunctionPassManager &FPM,
+                [](StringRef Name, FunctionPassManager &FPM,
                    ArrayRef<PassBuilder::PipelineElement>) {
                   if (Name == "invert-relational-icmp") {
                     FPM.addPass(InvertRelationalIcmpPass());
